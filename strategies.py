@@ -22,7 +22,7 @@ class BaseStrategy:
         """
         if not community_cards:
             strength = self.evaluator.preflop_hand_strength(hand)
-            print(f"🃏 Pre-flop: Hand {hand}, Strength: {strength:.2f}")
+            #print(f"🃏 Pre-flop: Hand {hand}, Strength: {strength:.2f}")
             return strength
 
         base_probability = self.evaluator.monte_carlo_simulation(hand, community_cards)
@@ -30,8 +30,9 @@ class BaseStrategy:
         adjusted_probability = base_probability * adjustment_factor
         final_prob = max(0, min(1, adjusted_probability))
 
-        print(f"📊 Hand: {hand}, Community: {community_cards}, Base Prob: {base_probability:.2f}, "
-              f"Adj Factor: {adjustment_factor:.2f}, Final Prob: {final_prob:.2f}")
+        #print(f" ")
+        """print(f"📊 Hand: {hand}, Community: {community_cards}, Base Prob: {base_probability:.2f}, "
+              f"Adj Factor: {adjustment_factor:.2f}, Final Prob: {final_prob:.2f}")"""
         return final_prob
 
     def should_bluff(self):

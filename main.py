@@ -12,6 +12,7 @@ def display_hand(bot):
 def display_community_cards(community_cards):
     """Displays the community cards in a formatted way."""
     print("\nCommunity Cards: " + (", ".join(community_cards) if community_cards else "None"))
+    print("")
 
 
 # === POSITION ASSIGNMENT FUNCTION ===
@@ -31,73 +32,79 @@ def assign_positions(bots):
 
 # === BETTING ROUND FUNCTION ===
 def betting_round(bots, minimum_bet=10, community_cards=[], stage="Pre-flop", big_blind_position=0):
+    """
+    Handles a full betting round, ensuring that bots act in correct order,
+    follow the betting rules, and avoid miscommunications.
+    """
     MAX_RAISES = {'Pre-flop': 3, 'Flop': 2, 'Turn': 1, 'River': 1}
-    raise_limit = MAX_RAISES.get(stage, 2)  # Raise limit based on stage
+    raise_limit = MAX_RAISES.get(stage, 2)
 
-    pot = sum(bot.current_bet for bot in bots)  # Start pot with blinds
+    pot = 0
     active_bots = [bot for bot in bots if bot.stack > 0]
     current_bet = minimum_bet
     raise_count = 0
 
-    assign_positions(active_bots)
-
-    # Assign Small Blind and Big Blind
+    # Assign blinds
     if len(active_bots) >= 2:
         small_blind_position = (big_blind_position - 1) % len(active_bots)
         big_blind_position = big_blind_position % len(active_bots)
 
-        for bot in active_bots:
-            bot.is_small_blind = (bot == active_bots[small_blind_position])
-            bot.is_big_blind = (bot == active_bots[big_blind_position])
+        small_blind = active_bots[small_blind_position]
+        big_blind = active_bots[big_blind_position]
 
-    # Pre-Flop: Betting starts with the Small Blind
-    if stage == "Pre-flop":
-        starting_index = small_blind_position
-    else:
-        # Post-Flop: Betting starts with first active player after the dealer
-        starting_index = (big_blind_position + 1) % len(active_bots) if len(active_bots) > 1 else 0
+        small_blind.bet(minimum_bet // 2)  # Small Blind
+        big_blind.bet(minimum_bet)  # Big Blind
 
+        #print(f"{small_blind.name} posts the Small Blind ({minimum_bet // 2} chips).")
+        #print(f"{big_blind.name} posts the Big Blind ({minimum_bet} chips).\n")
+
+        pot += (minimum_bet + minimum_bet // 2)
+
+    # Betting starts **AFTER** the Big Blind
+    starting_index = (big_blind_position + 1) % len(active_bots)
     betting_order = active_bots[starting_index:] + active_bots[:starting_index]
 
+    print("")
+
     while len(active_bots) > 1:
-        betting_complete = True
+        betting_complete = True  # Assume betting is complete unless a raise occurs
         bots_to_remove = []
 
-        for bot in betting_order[:]:
-            if bot not in active_bots:
-                continue  # Skip removed bots
+        for bot in betting_order:
+            if bot.stack <= 0:
+                continue  # Skip bots who are all-in
 
             game_state = {
                 'bot': bot,
                 'community_cards': community_cards,
                 'pot': pot,
                 'minimum_bet': current_bet,
-                'position': bot.position,
-                'is_small_blind': bot.is_small_blind,
-                'is_big_blind': bot.is_big_blind,
-                'money_committed': bot.current_bet
+                'money_committed': bot.current_bet,
+                'num_opponents': len(active_bots) - 1
             }
 
             action, amount = bot.decide_action(game_state, current_bet)
 
-            # FOLD LOGIC (Don't fold if heavily invested)
-            if action == 'fold' and (pot > 0 and bot.current_bet / pot < 0.2):
-                print(f"{bot.name} 🏳️ folds from {bot.position} position.")
+
+
+            # 🏳️ **FOLD LOGIC**
+            if action == 'fold':
+                print(f"{bot.name} 🏳️ folds.")
                 bots_to_remove.append(bot)
+                continue  # Move to the next bot
 
-            # CALL LOGIC
+            # 🔵 **CALL LOGIC**
             elif action == 'call':
-                call_amount = min(max(current_bet - bot.current_bet, 1), bot.stack)  # Ensures at least 1 chip bet
-                if call_amount > 0:
-                    placed_bet = bot.bet(call_amount)
-                    pot += placed_bet
-                    print(f"{bot.name} 🔵 calls with {placed_bet} chips from {bot.position}. (Pot: {pot})")
+                call_amount = min(current_bet - bot.current_bet, bot.stack)  # Ensure it's within stack
+                placed_bet = bot.bet(call_amount)
+                pot += placed_bet
+                print(f"{bot.name} 🔵 calls with {placed_bet} chips. (Pot: {pot})")
 
-            # RAISE LOGIC
+            # 🔺 **RAISE LOGIC**
             elif action == 'raise' and raise_count < raise_limit:
-                raise_amount = max(amount, minimum_bet)  # Ensure raise is at least minimum bet
+                raise_amount = max(amount, minimum_bet)
                 if raise_amount > bot.stack:
-                    raise_amount = bot.stack  # All-in if they don’t have enough
+                    raise_amount = bot.stack  # Go all-in if not enough
 
                 total_raise = current_bet + raise_amount
                 placed_bet = bot.bet(total_raise - bot.current_bet)
@@ -106,14 +113,18 @@ def betting_round(bots, minimum_bet=10, community_cards=[], stage="Pre-flop", bi
                     pot += placed_bet
                     current_bet = total_raise
                     raise_count += 1
-                    betting_complete = False
-                    print(f"{bot.name} 🔺 raises with {placed_bet} chips from {bot.position}. (Pot: {pot})")
+                    betting_complete = False  # Restart the betting cycle
+                    print(f"{bot.name} 🔺 raises with {placed_bet} chips. (Pot: {pot})")
+
+            # 🚫 **DEFAULT TO CHECK**
+            else:
+                print(f"{bot.name} ✅ checks.")
 
         # Remove folded bots
         for bot in bots_to_remove:
             active_bots.remove(bot)
 
-        # **If only one bot remains, they instantly win**
+        # If only one player remains, they instantly win the pot
         if len(active_bots) == 1:
             winner = active_bots[0]
             print(f"\n🏆 {winner.name} wins the pot of {pot} chips! (All others folded)")
@@ -121,14 +132,9 @@ def betting_round(bots, minimum_bet=10, community_cards=[], stage="Pre-flop", bi
             return pot, []
 
         if betting_complete:
-            break
+            break  # Exit loop if no raises happened
 
-    # **Eliminate Bots with 0 Chips**
-    for bot in bots[:]:
-        if bot.stack <= 0:
-            bots.remove(bot)
-            print(f"💀 {bot.name} is OUT of the game!")
-
+    # Reset betting amounts for the next round
     for bot in bots:
         bot.reset_bet()
 
@@ -187,10 +193,8 @@ def play_hand(deck, bots, evaluator, big_blind_position):
     print(f"💰 Wins {pot} chips!")
     winner.stack += pot
 
-
-
 # === RUN GAME FUNCTION ===
-def run_texas_holdem(rounds=10):
+def run_texas_holdem(rounds= 1):
     bots = [
         PokerBot("AggressiveBot", AggressiveStrategy(), stack=200),
         PokerBot("ConservativeBot", ConservativeStrategy(), stack=200),
@@ -229,7 +233,8 @@ def run_texas_holdem(rounds=10):
         bots[big_blind_position].bet(big_blind_amount)
 
         print(f"{bots[small_blind_position].name} posts the Small Blind ({small_blind_amount} chips).")
-        print(f"{bots[big_blind_position].name} posts the Big Blind ({big_blind_amount} chips).")
+        print(f"{bots[big_blind_position].name} posts the Big Blind ({big_blind_amount} chips).\n")
+
 
         # Deal hole cards **after** blinds are posted
         play_hand(deck, bots, evaluator, big_blind_position)
@@ -252,4 +257,4 @@ def run_texas_holdem(rounds=10):
 
 # === MAIN EXECUTION ===
 if __name__ == "__main__":
-    run_texas_holdem(rounds=10)
+    run_texas_holdem(rounds=1)

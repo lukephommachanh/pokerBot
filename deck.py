@@ -20,15 +20,18 @@ class PokerDeck:
         return [self.deck.pop() for _ in range(num_cards)]
 
 
-# Precompute Card Map for Faster Conversion
+# Correct card mappings for conversion to Treys format
 RANK_MAP = {'2': '2', '3': '3', '4': '4', '5': '5', '6': '6', '7': '7', '8': '8',
             '9': '9', '10': 'T', 'J': 'J', 'Q': 'Q', 'K': 'K', 'A': 'A'}
 
 SUIT_MAP = {'Hearts': 'h', 'Diamonds': 'd', 'Clubs': 'c', 'Spades': 's'}
 
+# ✅ Ensure correct conversion to Treys notation
 CARD_MAP = {f"{rank} of {suit}": f"{RANK_MAP[rank]}{SUIT_MAP[suit]}"
             for rank in RANK_MAP for suit in SUIT_MAP}
 
+# ✅ Create a reverse mapping (Treys notation back to human-readable format)
+REVERSE_CARD_MAP = {v: k for k, v in CARD_MAP.items()}
 
 class PokerHandEvaluator:
     def __init__(self):
@@ -47,8 +50,19 @@ class PokerHandEvaluator:
         return score
 
     def convert_to_treys(self, cards):
-        """ Convert human-readable card format to Treys format using precomputed CARD_MAP. """
-        return [CARD_MAP[card] for card in cards]
+        """Convert human-readable card format to Treys format using `CARD_MAP`."""
+        converted_cards = []
+        for card in cards:
+            if card in CARD_MAP:
+                converted_cards.append(CARD_MAP[card])  # ✅ Proper mapping
+            else:
+                print(f"❌ Error: Card '{card}' is not in `CARD_MAP`. Attempting Reverse Lookup...")
+                treys_card = REVERSE_CARD_MAP.get(card, None)  # Try reverse lookup
+                if treys_card:
+                    converted_cards.append(treys_card)
+                else:
+                    print(f"🚨 Critical Error: Cannot convert card '{card}'. Skipping it.")
+        return converted_cards
 
     def monte_carlo_simulation(self, hand, community_cards, num_simulations=1000):
         """Simulates future hands to estimate win probability."""
@@ -116,36 +130,57 @@ class PokerHandEvaluator:
         Uses Treys' evaluator to score all possible 5-card hands and picks the best.
         """
         best_hand = None
-        best_score = float('inf')  # Lower score is better in Treys
+        best_score = float('inf')  # Treys uses lower scores for better hands
 
-        # Convert human-readable cards to Treys format before evaluation
-        treys_full_hand = [Card.new(card) for card in self.convert_to_treys(full_hand)]
+        # Convert to Treys format
+        converted_cards = self.convert_to_treys(full_hand)
+        if not converted_cards:
+            print(f"❌ Error converting cards to Treys format: {full_hand}")
+            return None
 
-        # Generate all possible 5-card combinations from the 7 cards
-        for five_card_hand in combinations(treys_full_hand, 5):
-            five_card_list = list(five_card_hand)  # Convert tuple to list
-            score = self.evaluator.evaluate([], five_card_list)
+        # Generate all possible 5-card combinations
+        for five_card_hand in combinations(converted_cards, 5):
+            try:
+                treys_five_card = [Card.new(card) for card in five_card_hand]
+            except KeyError as e:
+                print(f"❌ Error in Treys card creation: {e}, Hand: {five_card_hand}")
+                continue
+
+            score = self.evaluator.evaluate([], treys_five_card)
 
             if score < best_score:
                 best_score = score
-                best_hand = five_card_list  # Store the best 5-card list
+                best_hand = five_card_hand  # Store best 5-card hand in Treys format
 
-        return best_hand
+        if not best_hand:
+            print(f"❌ Critical Error: No best hand found from {full_hand}")
+            return None
+
+        # Convert the best hand back to human-readable format
+        readable_hand = [REVERSE_CARD_MAP[card] for card in best_hand]
+
+        # Debugging: Print best five-card hand
+        #print(f"✅ Best Five-Card Hand Found: {readable_hand}")
+
+        return readable_hand
 
     def evaluate_hand_type(self, hand):
         """
         Determines the type of the best five-card poker hand.
         Uses Treys' ranking system and converts it into human-readable format.
         """
-        evaluator = Evaluator()
+        # Ensure proper conversion of human-readable hand format
+        treys_hand = [Card.new(card) for card in self.convert_to_treys(hand)]
 
-        # Ensure 'hand' is a list of Treys card objects, not human-readable format
-        if isinstance(hand[0], str):  # If the first element is a string, convert it
-            treys_hand = [Card.new(card) for card in self.convert_to_treys(hand)]
-        else:
-            treys_hand = hand  # Already in Treys format, no need to convert
+        if not treys_hand:
+            print(f"🚨 Error: Empty hand passed to evaluate_hand_type! Hand: {hand}")
+            return "Unknown Hand"
 
-        rank_class = evaluator.get_rank_class(evaluator.evaluate([], treys_hand))
+        # Get the hand ranking from Treys
+        rank_class = self.evaluator.get_rank_class(self.evaluator.evaluate([], treys_hand))
+        #print(f"Rank Class: {rank_class}")  # Debugging: Print the rank class
+
+        rank_class = rank_class + 1
 
         hand_names = {
             1: "Royal Flush",
@@ -164,7 +199,17 @@ class PokerHandEvaluator:
 
     def get_best_hand(self, hand, community_cards):
         """Returns the best five-card hand and its type."""
-        full_hand = hand + community_cards  # Combine hole cards with community cards
-        best_five = self.determine_best_five(full_hand)  # Use self to call instance method
-        hand_type = self.evaluate_hand_type(best_five)  # Use self to call instance method
+        full_hand = hand + community_cards
+        best_five = self.determine_best_five(full_hand)
+
+        if not best_five:
+            print(f"❌ Error: Could not determine best five-card hand for {hand} + {community_cards}")
+            return None, "Unknown"
+
+        hand_type = self.evaluate_hand_type(best_five)
+
+        # Debugging: Confirm best hand and type
+        #print(f"🏆 Final Best Hand: {best_five} -> {hand_type}")
+
         return best_five, hand_type
+

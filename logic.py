@@ -5,9 +5,11 @@ class PokerBot:
         self.hand = []
         self.stack = stack
         self.current_bet = 0
+        self.folded = False  # ✅ Initialize folded status
 
     def set_hand(self, hand):
         self.hand = hand
+        self.folded = False  # ✅ Reset folded status for a new hand
 
     def decide_action(self, game_state, minimum_bet):
         action = self.strategy.decide(game_state, self.hand)
